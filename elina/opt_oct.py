@@ -18,11 +18,11 @@ def opt_oct_manager_alloc():
 
     man = None
     try:
-        opt_oct_manager_alloc_c = opt_oct_api.opt_oct_manager_alloc
+        opt_oct_manager_alloc_c = opt_oct_api.opt_pk_manager_alloc
         opt_oct_manager_alloc_c.restype = ElinaManagerPtr
-        opt_oct_manager_alloc_c.argtypes = None
-        man = opt_oct_manager_alloc_c()
+        opt_oct_manager_alloc_c.argtypes = (c_int8,)
+        man = opt_oct_manager_alloc_c(0)
     except:
-        print('Problem with loading/calling "opt_oct_manager_alloc" from "liboptoct.so"')
+        print('Problem with loading/calling "opt_pk_manager_alloc" from "liboptpoly.so"')
 
     return man

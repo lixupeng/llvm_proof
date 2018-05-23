@@ -79,8 +79,9 @@ class PyInstVisitor : public llvm::InstVisitor<PyInstVisitor>
     template <typename T> void genPyCallFromInstruction(bool hasReturn, const std::string &fname, T &i, kwargs_t kwargs = {})
     {
         args_t args;
+        args.push_back(nameType(&i));
         for (ssize_t j = 0; j < i.getNumOperands(); j++) {
-            args.push_back(get(i.getOperand(j)));
+            args.push_back('(' + nameType(i.getOperand(j)) + ", " + get(i.getOperand(j)) + ")");
         }
 
         auto s = genPyCall(fname, args, kwargs);
@@ -134,6 +135,8 @@ class PyInstVisitor : public llvm::InstVisitor<PyInstVisitor>
             return this->visitConstant(c);
         } else if (const llvm::Argument *a = llvm::dyn_cast<llvm::Argument>(val)) {
             return quote(name(a));
+        } else if (const llvm::BasicBlock *bb = llvm::dyn_cast<llvm::BasicBlock>(val)) {
+            return quote("bb_" + getPrintingName(*bb, true, this->module_));
         }
         llvm::report_fatal_error("Unhandled value");
     }
@@ -142,12 +145,14 @@ class PyInstVisitor : public llvm::InstVisitor<PyInstVisitor>
     {
         if (auto ci = llvm::dyn_cast<llvm::ConstantInt>(c)) {
             return visitConstantInt(*ci);
+        } else if (auto cf = llvm::dyn_cast<llvm::ConstantFP>(c)) {
+            return visitConstantFP(*cf);
         } else if (auto ce = llvm::dyn_cast<llvm::ConstantExpr>(c)) {
             return visitConstantExpr(ce);
         } else if (auto undef = llvm::dyn_cast<llvm::UndefValue>(c)) {
             return genPyCall("undef", {nameType(undef)});
-        } else if (auto undef = llvm::dyn_cast<llvm::ConstantPointerNull>(c)) {
-            return genPyCall("constant_pointer_null", {nameType(undef)});
+        } else if (auto null = llvm::dyn_cast<llvm::ConstantPointerNull>(c)) {
+            return genPyCall("constant_pointer_null", {nameType(null)});
         } else if (auto gv = llvm::dyn_cast<llvm::GlobalValue>(c)) {
             return genPyCall("global_value", {nameType(gv), quote(name(gv))});
         } else if (auto ca = llvm::dyn_cast<llvm::ConstantDataArray>(c)) {
@@ -157,7 +162,7 @@ class PyInstVisitor : public llvm::InstVisitor<PyInstVisitor>
         } else if (auto ca = llvm::dyn_cast<llvm::ConstantAggregateZero>(c)) {
             return genPyCall("constant_aggregate_zero", {nameType(ca), quote(name(ca))});
         } else {
-            llvm::report_fatal_error("Unknown constant type");
+            return genPyCall("unknown", {});
         }
     }
 
@@ -167,12 +172,19 @@ class PyInstVisitor : public llvm::InstVisitor<PyInstVisitor>
                          {c.getValue().toString(10, false)});
     }
 
+    std::string visitConstantFP(const llvm::ConstantFP &cf)
+    {
+        return genPyCall("constant_double",
+                         {quote(print(&cf))});
+    }
+
     std::string visitConstantExpr(const llvm::ConstantExpr *e)
     {
         std::string opstring;
         args_t args;
+        args.push_back(nameType(e));
         for (ssize_t i = 0; i < e->getNumOperands(); i++) {
-            args.push_back(get(e->getOperand(i)));
+            args.push_back("(" + nameType(e->getOperand(i)) + ", " + get(e->getOperand(i)) + ")");
         }
 
         opstring = e->getOpcodeName();
@@ -233,26 +245,28 @@ class PyInstVisitor : public llvm::InstVisitor<PyInstVisitor>
 
     void visitBinaryOperator(const llvm::BinaryOperator &i)
     {
-        std::string opstring, op1, op2, dst;
+        std::string opstring, optype, op1, op2, dst;
 
         dst = get(&i);
-        op1 = get(i.getOperand(0));
-        op2 = get(i.getOperand(1));
+        optype = nameType(&i);
+        op1 = "(" + nameType(i.getOperand(0)) + ", " + get(i.getOperand(0)) + ")";
+        op2 = "(" + nameType(i.getOperand(1)) + ", " + get(i.getOperand(1)) + ")";
 
         opstring = i.getOpcodeName();
 
         kwargs_t kwargs;
 
-        emitter_.line("blk.add_equal(" + dst + ", " + genPyCall(opstring, { op1, op2, }, kwargs) + ", " + quote(print(&i.getDebugLoc())) + ")");
+        emitter_.line("blk.add_equal(" + dst + ", " + genPyCall(opstring, { optype, op1, op2, }, kwargs) + ", " + quote(print(&i.getDebugLoc())) + ")");
     }
 
     void visitICmpInst(const llvm::ICmpInst &i)
     {
-        std::string opstring, op1, op2, dst;
+        std::string opstring, optype, op1, op2, dst;
 
         dst = get(&i);
-        op1 = get(i.getOperand(0));
-        op2 = get(i.getOperand(1));
+        optype = nameType(&i);
+        op1 = "(" + nameType(i.getOperand(0)) + ", " + get(i.getOperand(0)) + ")";
+        op2 = "(" + nameType(i.getOperand(1)) + ", " + get(i.getOperand(1)) + ")";
 
         switch (i.getPredicate()) {
         case llvm::CmpInst::Predicate::ICMP_EQ:
@@ -289,18 +303,19 @@ class PyInstVisitor : public llvm::InstVisitor<PyInstVisitor>
             llvm::report_fatal_error("Unhandled predicate");
         }
 
-        emitter_.line("blk.add_equal(" + dst + ", " + genPyCall(opstring, { op1, op2, }) + ", " + quote(print(&i.getDebugLoc())) + ")");
+        emitter_.line("blk.add_equal(" + dst + ", " + genPyCall(opstring, { optype, op1, op2, }) + ", " + quote(print(&i.getDebugLoc())) + ")");
     }
 
     void visitSelectInst(const llvm::SelectInst &i)
     {
-        std::string dst, cond, trueval, falseval;
+        std::string dst, type, cond, trueval, falseval;
         dst = get(&i);
-        cond = get(i.getCondition());
-        trueval = get(i.getTrueValue());
-        falseval = get(i.getFalseValue());
+        type = nameType(&i);
+        cond = "(" + nameType(i.getCondition()) + ", " + get(i.getCondition()) + ")";
+        trueval = "(" + nameType(i.getTrueValue()) + ", " + get(i.getTrueValue()) + ")";
+        falseval = "(" + nameType(i.getFalseValue()) + ", " + get(i.getFalseValue()) + ")";
 
-        emitter_.line("blk.add_equal(" + dst + ", " + genPyCall("select", { cond, trueval, falseval }) + ", " + quote(print(&i.getDebugLoc())) + ")");
+        emitter_.line("blk.add_equal(" + dst + ", " + genPyCall("select", { type, cond, trueval, falseval }) + ", " + quote(print(&i.getDebugLoc())) + ")");
     }
 
     void visitBranchInst(const llvm::BranchInst &i)
@@ -425,9 +440,62 @@ class PyInstVisitor : public llvm::InstVisitor<PyInstVisitor>
         genPyCallFromInstruction(has_return, "call", i);
     }
 
-    void visitUnreachableInst(const llvm::UnreachableInst &i)
+    void visitFCmpInst(const llvm::FCmpInst &i)
     {
-        genPyCallFromInstruction(false, "unreachable", i);
+        std::string opstring, optype, op1, op2, dst;
+
+        dst = get(&i);
+        optype = nameType(&i);
+        op1 = "(" + nameType(i.getOperand(0)) + ", " + get(i.getOperand(0)) + ")";
+        op2 = "(" + nameType(i.getOperand(1)) + ", " + get(i.getOperand(1)) + ")";
+
+        switch (i.getPredicate()) {
+            case llvm::CmpInst::Predicate::FCMP_UGT:
+            case llvm::CmpInst::Predicate::FCMP_OGT:
+                opstring = "gt";
+                break;
+            case llvm::CmpInst::Predicate::FCMP_UGE:
+            case llvm::CmpInst::Predicate::FCMP_OGE:
+                opstring = "ge";
+                break;
+            case llvm::CmpInst::Predicate::FCMP_ULT:
+            case llvm::CmpInst::Predicate::FCMP_OLT:
+                opstring = "lt";
+                break;
+            default:
+                llvm::report_fatal_error("Unhandled predicate");
+        }
+
+        emitter_.line("blk.add_equal(" + dst + ", " + genPyCall(opstring, { optype, op1, op2, }) + ", " + quote(print(&i.getDebugLoc())) + ")");
+    }
+
+    void visitExtractValueInst(const llvm::ExtractValueInst &i)
+    {
+        std::string dst = get(&i);
+        std::string target = "(" + nameType(i.getAggregateOperand()) + ", " + get(i.getAggregateOperand()) + ")";
+
+        std::ostringstream args;
+        auto indices = i.getIndices().data();
+        for (unsigned j = 0; j < i.getNumIndices(); ++j) {
+            if (j > 0) args << ", ";
+            args << indices[j];
+        }
+        emitter_.line("blk.add_equal(" + dst + ", " + genPyCall("extract_value", { target, args.str() }) + ", " + quote(print(&i.getDebugLoc())) + ")");
+    }
+
+    void visitInsertValueInst(const llvm::InsertValueInst &i)
+    {
+        std::string dst = get(&i);
+        std::string target = "(" + nameType(i.getAggregateOperand()) + ", " + get(i.getAggregateOperand()) + ")";
+        std::string val = "(" + nameType(i.getInsertedValueOperand()) + ", " + get(i.getInsertedValueOperand()) + ")";
+
+        std::ostringstream args;
+        auto indices = i.getIndices().data();
+        for (unsigned j = 0; j < i.getNumIndices(); ++j) {
+            if (j > 0) args << ", ";
+            args << indices[j];
+        }
+        emitter_.line("blk.add_equal(" + dst + ", " + genPyCall("insert_value", { target, args.str(), val }) + ", " + quote(print(&i.getDebugLoc())) + ")");
     }
 
     void visitInstruction(const llvm::Instruction &i)
@@ -457,6 +525,42 @@ void PyLLVMEmitter::emitBasicBlock(llvm::BasicBlock &bb)
     this->line();
 }
 
+void PyLLVMEmitter::emitStructType(const llvm::StructType &type)
+{
+    std::string res;
+    llvm::raw_string_ostream stream{res};
+    this->line("new_type_name = " + quote(type.getName()));
+    stream << "new_type_struct = ";
+    stream << "(";
+    for (const auto &element : type.elements()) {
+        stream << "'";
+        element->print(stream, false);
+        stream << "',";
+    }
+    stream << ")";
+    this->line(stream.str());
+    this->line("module.add_type(new_type_name, new_type_struct)");
+    this->line();
+}
+
+void PyLLVMEmitter::emitGlobalVariable(const llvm::GlobalVariable &global)
+{
+    std::string res;
+    llvm::raw_string_ostream stream{res};
+
+    std::string name = "(" + quote(getPrintingName(global, false, *module_)) + ", " + nameType(&global) + ")";
+    std::string val = "None";
+
+    PyInstVisitor pv{*this, *module_};
+    if (global.hasInitializer()) {
+        val = pv.visitConstant(global.getInitializer());
+    }
+    this->line("var_name = " + name);
+    this->line("var_value = " + val);
+    this->line("module.add_global_variable(var_name, var_value)");
+    this->line();
+}
+
 void PyLLVMEmitter::emitFunction(llvm::Function &function)
 {
     if (function.isDeclaration()) {
@@ -470,7 +574,7 @@ void PyLLVMEmitter::emitFunction(llvm::Function &function)
 
     int i = 0;
     for (auto &arg : function.args()) {
-        this->line("func.add_arg(" + quote(getPrintingName(arg, false, *module_)) + ")");
+        this->line("func.add_arg((" + nameType(&arg) + ", " + quote(getPrintingName(arg, false, *module_)) + "))");
         ++i;
     }
     this->line("func.set_entry(\"bb_" + getPrintingName(function.getEntryBlock(), true, *module_) + "\")");
@@ -489,6 +593,10 @@ void PyLLVMEmitter::emitModule(void)
     this->line("import prover");
     this->line("import prover.ops");
     this->genBlock("def get(module)", [&]() {
+        for (const auto &type : module_->getIdentifiedStructTypes())
+            this->emitStructType(*type);
+        for (const auto &global : module_->getGlobalList())
+            this->emitGlobalVariable(global);
         for (auto &function : module_->getFunctionList()) {
             this->emitFunction(function);
         }

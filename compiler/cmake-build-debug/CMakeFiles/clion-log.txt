@@ -1,0 +1,6 @@
+/home/parallels/Tools/clion-2018.1.1/bin/cmake/bin/cmake -DCMAKE_BUILD_TYPE=Debug -G "CodeBlocks - Unix Makefiles" /home/parallels/llvm_proof/compiler
+-- Found LLVM 5.0.0
+-- Using LLVMConfig.cmake in: /usr/lib/llvm-5.0/cmake
+-- Configuring done
+-- Generating done
+-- Build files have been written to: /home/parallels/llvm_proof/compiler/cmake-build-debug

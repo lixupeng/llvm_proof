@@ -31,12 +31,12 @@ class State:
     def is_bottom(self):
         return elina_abstract0_is_bottom(manager, self.el_state)
 
-    def gen_el_cons(self, cons, is_expr=False):
+    def gen_el_cons(self, cons, is_expr=False, eq_type="ge"):
         a, x, b, y, c = cons
         size = (1 if a else 0) + (1 if b else 0)
         expr = elina_linexpr0_alloc(ElinaLinexprDiscr.ELINA_LINEXPR_SPARSE, size)
         cst = pointer(expr.contents.cst)
-        elina_scalar_set_int(cst.contents.val.scalar, c)
+        elina_scalar_set_double(cst.contents.val.scalar, c)
         size = 0
         for _a, _x in [(a, x), (b, y)]:
             if _a == 0:
@@ -48,13 +48,20 @@ class State:
             size += 1
         if not is_expr:
             cons = elina_lincons0_array_make(1)
-            cons.p[0].constyp = c_uint(ElinaConstyp.ELINA_CONS_SUPEQ)
+            if eq_type == "ge":
+                cons.p[0].constyp = c_uint(ElinaConstyp.ELINA_CONS_SUPEQ)
+            elif eq_type == "gt":
+                cons.p[0].constyp = c_uint(ElinaConstyp.ELINA_CONS_SUP)
+            elif eq_type == "eq":
+                cons.p[0].constyp = c_uint(ElinaConstyp.ELINA_CONS_EQ)
+            else:
+                cons.p[0].constyp = c_uint(ElinaConstyp.ELINA_CONS_SUP)
             cons.p[0].linexpr0 = expr
             return cons
         return expr
 
-    def add_constrain(self, cons):
-        cons_array = self.gen_el_cons(cons)
+    def add_constrain(self, cons, eq_type="ge"):
+        cons_array = self.gen_el_cons(cons, False, eq_type)
         self.el_state = elina_abstract0_meet_lincons_array(
             manager, c_bool(False), self.el_state, cons_array)
         elina_lincons0_array_clear(cons_array)
@@ -88,8 +95,8 @@ class State:
     def less_equal(self, state):
         return elina_abstract0_is_leq(manager, self.el_state, state.el_state)
 
-    def sat(self, cons):
-        cons_array = self.gen_el_cons(cons)
+    def sat(self, cons, eq_type="ge"):
+        cons_array = self.gen_el_cons(cons, False, eq_type)
         state = elina_abstract0_meet_lincons_array(manager, False, self.el_state, cons_array)
         arr = elina_abstract0_to_lincons_array(manager, state)
         if debug:

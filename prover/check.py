@@ -5,6 +5,8 @@ def check_buffer_overflow(cfg):
             if event[0] == 'buffer_overflow':
                 p, dbg_loc = event[1], event[2]
                 overflow = False
+                if cfg.fixpoints[node].sat((1, p, 0, 0, 0), 'eq'):
+                    overflow = True
                 if isinstance(cfg.var_info[p][0], tuple) and cfg.var_info[p][0][0] == 'get_ptr':
                     a, n = cfg.var_info[p][0][1], cfg.var_info[p][0][2]
                     if isinstance(cfg.var_info[a][0], tuple) and cfg.var_info[a][0][0] == 'array':
