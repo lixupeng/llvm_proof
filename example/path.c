@@ -26,8 +26,11 @@ double min_double(double a, double b) {
   return a < b ? a : b;
 }
 
+unsigned size_double(const struct Vector_double *vec) {
+  return vec->end - vec->start;
+}
+
 double* lower_bound_double(double* start, double* end, double value) {
-  if (!start || !end) return end;
   double *p;
   for (p = start; p != end; ++p) {
     if (*p >= value) break;
@@ -68,11 +71,10 @@ struct Vector_Vec2d {
 };
 
 int empty_Vec2d(const struct Vector_Vec2d *vec) {
-  return vec->capacity == 0 || vec->end == vec->start;
+  return vec->end == vec->start;
 }
 
 unsigned size_Vec2d(const struct Vector_Vec2d *vec) {
-  if (empty_Vec2d(vec)) return 0;
   return vec->end - vec->start;
 }
 
@@ -94,11 +96,10 @@ struct Vector_LineSegment2d {
 };
 
 int empty_LineSegment2d(const struct Vector_LineSegment2d *vec) {
-  return vec->capacity == 0 || vec->end == vec->start;
+  return vec->end == vec->start;
 }
 
 unsigned size_LineSegment2d(const struct Vector_LineSegment2d *vec) {
-  if (empty_LineSegment2d(vec)) return 0;
   return vec->end - vec->start;
 }
 
@@ -212,6 +213,9 @@ struct Vec2d GetSmoothPoint(const struct LaneInfo *lane, double s) {
 
   if (s >= lane->total_length_) {
     return *(lane->points_.end - 1);
+  }
+  if (size_Vec2d(&lane->points_) != size_double(&lane->accumulated_s_)) {
+    return point;
   }
 
   const double *low_itr = lower_bound_double(lane->accumulated_s_.start, lane->accumulated_s_.end, s);

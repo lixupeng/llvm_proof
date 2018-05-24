@@ -60,11 +60,15 @@ def ashr(t, x, n):
     return ('identity', t, x)
     #return ('shr', t, x, n)
 
-def lshr(t, x, n):
-    return ('shr', t, x, n)
+def sdiv(t, x, y):
+    return ('identity', t, x)
 
-def phi(dic):
-    return ('phi', dic)
+def lshr(t, x, n):
+    return ('identity', t, x)
+    #return ('shr', t, x, n)
+
+def phi(t, dic):
+    return ('phi', t, dic)
 
 def sgt(t, x, y):
     return ('gt', t, x, y)
@@ -75,6 +79,12 @@ def ugt(t, x, y):
 def gt(t, x, y):
     return ('gt', t, x, y)
 
+def ge(t, x, y):
+    return ('ge', t, x, y)
+
+def uge(t, x, y):
+    return ('ge', t, x, y)
+
 def slt(t, x, y):
     return ('lt', t, x, y)
 
@@ -83,6 +93,12 @@ def ult(t, x, y):
 
 def lt(t, x, y):
     return ('lt', t, x, y)
+
+def le(t, x, y):
+    return ('le', t, x, y)
+
+def ule(t, x, y):
+    return ('le', t, x, y)
 
 def eq(t, x, y):
     return ('eq', t, x, y)
@@ -94,7 +110,7 @@ def or_(t, x, y):
     return ('or', t, x, y)
 
 def and_(t, x, y):
-    if y[1] == 4294967295:
+    if y[1] == -1:
         return ('identity', t, x)
     return ('and', t, x, y)
 

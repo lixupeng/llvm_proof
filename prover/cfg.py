@@ -11,11 +11,15 @@ class ControlFlowGraph:
         self.widening_nodes = set()
         self.check = {}
         self.fixpoints = {}
+        self.valid_range = []
 
     def solve_cond(self, c):
-        info = self.var_info[c][0]
+        if isinstance(c, str):
+            info = self.var_info[c][0]
+        else:
+            info = c
         if info == None:
-            return [[((1, c, 0, '', -1), 'eq')]]
+            return [[([(1, c), (1, -1)], 'eq')]]
         if info[0] == 'and':
             cond_x, cond_y = self.solve_cond(info[1]), self.solve_cond(info[2])
             cond = []
@@ -30,9 +34,12 @@ class ControlFlowGraph:
             return [info[1]]
 
     def solve_not_cond(self, c):
-        info = self.var_info[c][0]
+        if isinstance(c, str):
+            info = self.var_info[c][0]
+        else:
+            info = c
         if info == None:
-            return [[((1, c, 0, '', 0), 'eq')]]
+            return [[([(1, c)], 'eq')]]
         if info[0] == 'and':
             cond_x, cond_y = self.solve_not_cond(info[1]), self.solve_not_cond(info[2])
             return cond_x + cond_y
@@ -45,8 +52,13 @@ class ControlFlowGraph:
             return cond
         if info[0] == 'cons':
             cond = []
-            for (a, x, b, y, c), t in info[1]:
-                cond.append([((-a, x, -b, y, -1-c), t)])
+            for cons, t in info[1]:
+                if t == 'eq':
+                    cond.append([(cons, 'lt')])
+                    cond.append([(cons, 'gt')])
+                else:
+                    neg_t = {'gt':'le', 'ge':'lt', 'lt':'ge', 'le':'gt'}[t]
+                    cond.append([(cons, neg_t)])
             return cond
 
     def compute_widening_nodes(self, node, visited, instack):
@@ -93,7 +105,7 @@ class ControlFlowGraph:
                             state.add_constrain(c[0], c[1])
                 t_state = self.fixpoints[t].copy()
                 state.join(t_state)
-                if visit_count[t] > 1 and t in self.widening_nodes:
+                if  t in self.widening_nodes:
                     t_state.widening(state)
                 else:
                     t_state = state

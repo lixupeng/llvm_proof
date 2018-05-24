@@ -16,20 +16,22 @@ import genPy
 
 module = Module()
 genPy.get(module)
-for func in ["GetProjection"]:#module.funcs.keys():
+
+no_overflow = True
+for func in module.funcs.keys():
     cfg = module.build_cfg(func)
     cfg.compute_fixpoint()
     report = check_buffer_overflow(cfg)
-
-    print("\nCheck Function: " + func)
     if len(report) > 0:
+        print("\nCheck Function: " + func)
         for x, loc in report:
             print()
             print("Potential buffer overflow at", loc, ":", x)
             if len(loc) > 0:
                 _, line, column = tuple(loc.split(":"))
                 print(str(line) + ":" + f[int(line) - 1])
-    else:
-        print("No buffer overflow!")
+
+if no_overflow:
+    print("No buffer overflow!")
 
 #os.system("rm tmp.ll genPy.py")

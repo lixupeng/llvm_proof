@@ -38,7 +38,9 @@ static std::string quote(const std::string &s)
 
 static std::string nameType(const llvm::Value *val)
 {
-    return quote(print(val->getType()));
+    std::string res = print(val->getType());
+    if (res[0] == '%') res = res.substr(1);
+    return quote(res);
 }
 
 static std::string getPrintingName(const llvm::Value &val, bool strip, const llvm::Module &mod)
@@ -341,6 +343,7 @@ class PyInstVisitor : public llvm::InstVisitor<PyInstVisitor>
     {
         std::ostringstream phimap;
         std::string dst = get(&i);
+	std::string dtype = nameType(&i);
 
         phimap << "{";
         for (unsigned j = 0; j < i.getNumIncomingValues(); ++j) {
@@ -350,7 +353,7 @@ class PyInstVisitor : public llvm::InstVisitor<PyInstVisitor>
         }
         phimap << "}";
 
-        emitter_.line("blk.add_equal(" + dst + ", " + genPyCall("phi", { phimap.str() }) + ", " + quote(print(&i.getDebugLoc()))  + ")");
+        emitter_.line("blk.add_equal(" + dst + ", " + genPyCall("phi", { dtype, phimap.str() }) + ", " + quote(print(&i.getDebugLoc()))  + ")");
     }
 
     void visitTruncInst(const llvm::TruncInst &i)
@@ -462,6 +465,11 @@ class PyInstVisitor : public llvm::InstVisitor<PyInstVisitor>
             case llvm::CmpInst::Predicate::FCMP_OLT:
                 opstring = "lt";
                 break;
+            case llvm::CmpInst::Predicate::FCMP_ULE:
+            case llvm::CmpInst::Predicate::FCMP_OLE:
+                opstring = "le";
+                break;
+
             default:
                 llvm::report_fatal_error("Unhandled predicate");
         }

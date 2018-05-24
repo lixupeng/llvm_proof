@@ -32,35 +32,50 @@ class State:
         return elina_abstract0_is_bottom(manager, self.el_state)
 
     def gen_el_cons(self, cons, is_expr=False, eq_type="ge"):
-        a, x, b, y, c = cons
-        size = (1 if a else 0) + (1 if b else 0)
+        scalar = 0
+        coeff = {}
+        for a, x in cons:
+            if isinstance(x, str):
+                if x != '':
+                    coeff[x] = 0
+            else:
+                if eq_type[0] == 'l':
+                    scalar -= a * x
+                else:
+                    scalar += a * x
+        size = len(coeff)
         expr = elina_linexpr0_alloc(ElinaLinexprDiscr.ELINA_LINEXPR_SPARSE, size)
         cst = pointer(expr.contents.cst)
-        elina_scalar_set_double(cst.contents.val.scalar, c)
+        elina_scalar_set_double(cst.contents.val.scalar, scalar)
+        for a, x in cons:
+            if isinstance(x, str):
+                if x == '':
+                    continue
+                if eq_type[0] == 'l':
+                    a = -a
+                coeff[x] += a
         size = 0
-        for _a, _x in [(a, x), (b, y)]:
-            if _a == 0:
-                continue
+        for x, a in coeff.items():
             term = pointer(expr.contents.p.linterm[size])
-            term.contents.dim = ElinaDim(self.var_index[_x])
+            term.contents.dim = ElinaDim(self.var_index[x])
             coeff = pointer(term.contents.coeff)
-            elina_scalar_set_double(coeff.contents.val.scalar, _a)
+            elina_scalar_set_double(coeff.contents.val.scalar, a)
             size += 1
+        if eq_type[0] == 'l':
+            eq_type = 'g' + eq_type[1]
         if not is_expr:
             cons = elina_lincons0_array_make(1)
             if eq_type == "ge":
                 cons.p[0].constyp = c_uint(ElinaConstyp.ELINA_CONS_SUPEQ)
             elif eq_type == "gt":
                 cons.p[0].constyp = c_uint(ElinaConstyp.ELINA_CONS_SUP)
-            elif eq_type == "eq":
-                cons.p[0].constyp = c_uint(ElinaConstyp.ELINA_CONS_EQ)
             else:
-                cons.p[0].constyp = c_uint(ElinaConstyp.ELINA_CONS_SUP)
+                cons.p[0].constyp = c_uint(ElinaConstyp.ELINA_CONS_EQ)
             cons.p[0].linexpr0 = expr
             return cons
         return expr
 
-    def add_constrain(self, cons, eq_type="ge"):
+    def add_constrain(self, cons, eq_type):
         cons_array = self.gen_el_cons(cons, False, eq_type)
         self.el_state = elina_abstract0_meet_lincons_array(
             manager, c_bool(False), self.el_state, cons_array)
@@ -95,13 +110,15 @@ class State:
     def less_equal(self, state):
         return elina_abstract0_is_leq(manager, self.el_state, state.el_state)
 
-    def sat(self, cons, eq_type="ge"):
+    def sat(self, cons, eq_type):
         cons_array = self.gen_el_cons(cons, False, eq_type)
         state = elina_abstract0_meet_lincons_array(manager, False, self.el_state, cons_array)
-        arr = elina_abstract0_to_lincons_array(manager, state)
         if debug:
+            arr = elina_abstract0_to_lincons_array(manager, state)
             elina_lincons0_array_print(arr, self.vars)
-        return not elina_abstract0_is_bottom(manager, state)
+            elina_lincons0_array_clear(arr)
+        is_sat = not elina_abstract0_is_bottom(manager, state)
+        return is_sat
 
     def copy(self):
         new_state = State([])
