@@ -226,6 +226,8 @@ class Module:
                         cfg.check[internal[1]].append(('buffer_overflow', (tp, p), dbg_loc))
                 elif len(inst) == 3:
                     sym, expr, dbg_loc = inst
+                    if 'cons' in cfg.var_info[sym]:
+                        cfg.edges[internal].append(('cons', cfg.var_info[sym]['cons']))
                     if expr[0] == 'identity':
                         (tx, x) = expr[2]
                         if isinstance(x, str):
@@ -238,7 +240,7 @@ class Module:
                             edge = (b + "_" + blk.name, blk.name + "_s")
                             cfg.edges.setdefault(edge, [])
                             if isinstance(v, str):
-                                self.obj_assign(cfg, mem, internal, t, sym, v)
+                                self.obj_assign(cfg, mem, edge, t, sym, v)
                             else:
                                 cfg.edges[edge].append(('assign', sym, [(1, v)]))
                     elif expr[0] == 'alloca':
@@ -291,12 +293,17 @@ class Module:
                         cfg.edges[internal] = []
                     elif expr[0] == 'get_ptr':
                         t, (tb, base), idxs = expr[1], expr[2], expr[3:]
+                        if base not in mem:
+                            cfg.var_info[base]['cons'] = self.build_child_objs(cfg, mem, tb, base)
+                        assigned = False
                         for i, (tidx, idx) in enumerate(idxs):
                             if tb[-1] == '*':
-                                cfg.check.setdefault(internal[1], [])
-                                cfg.check[internal[1]].append(('buffer_overflow', (tb, (base, idx)), dbg_loc))
                                 if i == len(idxs) - 1:
                                     cfg.edges[internal].append(('assign', sym, [(1, base), (1, idx)]))
+                                    assigned = True
+                                else:
+                                    cfg.check.setdefault(internal[1], [])
+                                    cfg.check[internal[1]].append(('buffer_overflow', (tb, (base, idx)), dbg_loc))
                                 tb = tb[:-1]
                                 obj = mem[base][0]
                             else:
@@ -305,7 +312,8 @@ class Module:
                                 tb = self.types[tb][idx]
                                 obj = mem[base][idx]
                             base = obj
-                        cfg.valid_range.append((sym,))
+                        if not assigned:
+                            cfg.valid_range.append((sym,))
                         cfg.edges[internal].append(('cons', [([(1, sym)], 'gt')]))
                         if sym not in mem:
                             mem[sym] = { 0 : base }
@@ -354,6 +362,14 @@ class Module:
                             t = expr[1]
                             cfg.valid_range.append((sym,))
                             cfg.edges[internal].append(('cons', [([(1, sym)], 'gt')]))
+                        elif fname[1] == "@DistanceTo":
+                            (t3, p3), (t4, p4) = expr[3], expr[4]
+                            cfg.check.setdefault(internal[1], [])
+                            cfg.check[internal[1]].append(('buffer_overflow', (t3, p3), dbg_loc))
+                            cfg.check[internal[1]].append(('buffer_overflow', (t4, p4), dbg_loc))
+
+
+
         for blk, edges in func.edges.items():
             for edge in edges:
                 if len(edge) == 4:

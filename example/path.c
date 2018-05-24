@@ -26,11 +26,12 @@ double min_double(double a, double b) {
   return a < b ? a : b;
 }
 
-unsigned size_double(const struct Vector_double *vec) {
+int size_double(const struct Vector_double *vec) {
   return vec->end - vec->start;
 }
 
 double* lower_bound_double(double* start, double* end, double value) {
+  if (!start || !end) return end;
   double *p;
   for (p = start; p != end; ++p) {
     if (*p >= value) break;
@@ -74,7 +75,7 @@ int empty_Vec2d(const struct Vector_Vec2d *vec) {
   return vec->end == vec->start;
 }
 
-unsigned size_Vec2d(const struct Vector_Vec2d *vec) {
+int size_Vec2d(const struct Vector_Vec2d *vec) {
   return vec->end - vec->start;
 }
 
@@ -99,7 +100,7 @@ int empty_LineSegment2d(const struct Vector_LineSegment2d *vec) {
   return vec->end == vec->start;
 }
 
-unsigned size_LineSegment2d(const struct Vector_LineSegment2d *vec) {
+int size_LineSegment2d(const struct Vector_LineSegment2d *vec) {
   return vec->end - vec->start;
 }
 
@@ -161,9 +162,9 @@ int GetProjection(struct LaneInfo *lane, const struct Vec2d *point, double *accu
   double min_distance = DOUBLE_MAX;
   unsigned min_index = 0;
   double min_proj = 0.0;
-  unsigned num_segments = size_LineSegment2d(&lane->segments_);
+  int num_segments = size_LineSegment2d(&lane->segments_);
 
-  for (unsigned i = 0; i < num_segments; ++i) {
+  for (int i = 0; i < num_segments; ++i) {
     const struct LineSegment2d *segment = lane->segments_.start + i;
     const double distance = DistanceTo(segment, point);
     if (distance < min_distance) {
@@ -217,6 +218,11 @@ struct Vec2d GetSmoothPoint(const struct LaneInfo *lane, double s) {
   if (size_Vec2d(&lane->points_) != size_double(&lane->accumulated_s_)) {
     return point;
   }
+  /*
+  if (size_Vec2d(&lane->points_) != size_Vec2d(&lane->unit_directions_)) {
+    return point;
+  }
+  */
 
   const double *low_itr = lower_bound_double(lane->accumulated_s_.start, lane->accumulated_s_.end, s);
   if (low_itr == lane->accumulated_s_.end) {
@@ -228,7 +234,7 @@ struct Vec2d GetSmoothPoint(const struct LaneInfo *lane, double s) {
     return *(lane->points_.start + index);
   }
 
-  struct Vec2d smooth_point = Sub(*(lane->points_.start + index),  Mul(*(lane->unit_directions_.start + index - 1),  delta_s));
+  struct Vec2d smooth_point = Sub(*(lane->points_.start + index),  Mul(*(lane->unit_directions_.start + index),  delta_s));
 
   return smooth_point;
 }

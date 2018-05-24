@@ -23,6 +23,7 @@ for func in module.funcs.keys():
     cfg.compute_fixpoint()
     report = check_buffer_overflow(cfg)
     if len(report) > 0:
+        no_overflow = False
         print("\nCheck Function: " + func)
         for x, loc in report:
             print()

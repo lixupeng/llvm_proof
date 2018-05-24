@@ -105,13 +105,14 @@ class ControlFlowGraph:
                             state.add_constrain(c[0], c[1])
                 t_state = self.fixpoints[t].copy()
                 state.join(t_state)
-                if  t in self.widening_nodes:
-                    t_state.widening(state)
+                if t in self.widening_nodes:
+                    #t_state.widening(state)
+                    t_state = state
                 else:
                     t_state = state
                 if not t_state.less_equal(self.fixpoints[t]):
                     self.fixpoints[t] = t_state
-                    if t not in Qs:
+                    if t not in Qs and visit_count[t] < 2:
                         Q.put(t)
                         Qs.add(t)
         for n in self.nodes:
