@@ -506,6 +506,11 @@ class PyInstVisitor : public llvm::InstVisitor<PyInstVisitor>
         emitter_.line("blk.add_equal(" + dst + ", " + genPyCall("insert_value", { target, args.str(), val }) + ", " + quote(print(&i.getDebugLoc())) + ")");
     }
 
+    void visitSIToFPInst(const llvm::SIToFPInst &i)
+    {
+        genPyCallFromInstruction(true, "sitofp", i);
+    }
+
     void visitInstruction(const llvm::Instruction &i)
     {
         llvm::report_fatal_error("Unhandled instruction class");

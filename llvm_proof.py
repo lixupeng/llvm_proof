@@ -10,7 +10,7 @@ import sys
 filename = sys.argv[1]
 f = open(filename).readlines()
 
-os.system("clang-5.0 -g -O1 -S -emit-llvm %s -o tmp.ll && compiler/gen_py tmp.ll > genPy.py" % filename)
+os.system("clang-5.0 -g -O1 -S -emit-llvm %s -o tmp.ll 2>/dev/null && compiler/gen_py tmp.ll > genPy.py" % filename)
 
 import genPy
 

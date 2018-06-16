@@ -218,11 +218,9 @@ struct Vec2d GetSmoothPoint(const struct LaneInfo *lane, double s) {
   if (size_Vec2d(&lane->points_) != size_double(&lane->accumulated_s_)) {
     return point;
   }
-  /*
   if (size_Vec2d(&lane->points_) != size_Vec2d(&lane->unit_directions_)) {
     return point;
   }
-  */
 
   const double *low_itr = lower_bound_double(lane->accumulated_s_.start, lane->accumulated_s_.end, s);
   if (low_itr == lane->accumulated_s_.end) {

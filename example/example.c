@@ -1,8 +1,9 @@
 int test(int n)
 {
+    int sum = 0;
+
     int a[n];
     int b[n + 2];
-    int sum = 0;
 
     sum += a[0];  // not overflow
     sum += a[n - 1];  // not overflow
@@ -31,7 +32,6 @@ int test(int n)
 	    sum += a[i + j];   // overflow 
 	    sum += b[i + j];   // not overflow
 	}
-
 
     return sum;
 }

@@ -18,7 +18,7 @@ class ControlFlowGraph:
             info = self.var_info[c][0]
         else:
             info = c
-        if info == None:
+        if info is None:
             return [[([(1, c), (1, -1)], 'eq')]]
         if info[0] == 'and':
             cond_x, cond_y = self.solve_cond(info[1]), self.solve_cond(info[2])
@@ -31,6 +31,14 @@ class ControlFlowGraph:
             cond_x, cond_y = self.solve_cond(info[1]), self.solve_cond(info[2])
             return cond_x + cond_y
         if info[0] == 'cons':
+            if len(info[1]) == 1 and info[1][0][1] == 'eq' and len(info[1][0][0]) == 2:
+                (a, x), (b, y) = info[1][0][0][0], info[1][0][0][1]
+                if a == 1 and isinstance(x, str) and b == -1 and y in [0, 1] and \
+                    isinstance(self.var_info[x][0], tuple):
+                    if y == 0:
+                        return self.solve_not_cond(x)
+                    else:
+                        return self.solve_cond(x)
             return [info[1]]
 
     def solve_not_cond(self, c):
@@ -38,7 +46,7 @@ class ControlFlowGraph:
             info = self.var_info[c][0]
         else:
             info = c
-        if info == None:
+        if info is None:
             return [[([(1, c)], 'eq')]]
         if info[0] == 'and':
             cond_x, cond_y = self.solve_not_cond(info[1]), self.solve_not_cond(info[2])
@@ -51,6 +59,14 @@ class ControlFlowGraph:
                     cond.append(cx + cy)
             return cond
         if info[0] == 'cons':
+            if len(info[1]) == 1 and info[1][0][1] == 'eq' and len(info[1][0][0]) == 2:
+                (a, x), (b, y) = info[1][0][0][0], info[1][0][0][1]
+                if a == 1 and isinstance(x, str) and b == -1 and y in [0, 1] and \
+                    isinstance(self.var_info[x][0], tuple):
+                    if y == 0:
+                        return self.solve_cond(x)
+                    else:
+                        return self.solve_not_cond(x)
             cond = []
             for cons, t in info[1]:
                 if t == 'eq':

@@ -45,10 +45,14 @@ class Module:
     def __init__(self):
         self.funcs = {}
         self.types = {}
+        self.global_vars = {}
         self.useful_fields = {}
 
     def add_function(self, func):
         self.funcs[func.name] = func
+
+    def add_global_variable(self, name, value):
+        self.global_vars[name] = value
 
     def add_type(self, type_name, type_struct):
         if type_name in self.types:
@@ -95,14 +99,26 @@ class Module:
                         if i == 0:
                             constrains.append(([(1, var), (-1, sub_v)], 'eq'))
                         constrains += self.build_child_objs(cfg, mem, sub_t, sub_v)
-                    if t in ['struct.Vector_Vec2d', 'struct.Vector_LineSegment2d', 'struct.Vector_double',
-                             'struct.Vector_LaneBoundaryType', 'struct.Vector_int']:
+                    if t.startswith('struct.Vector_'):
                         begin = var + "_0"
                         end = var + "_1"
                         cfg.valid_range.append((begin, end))
                         constrains.append(([(1, begin)], 'gt'))
                         constrains.append(([(1, end), (-1, begin)], 'ge'))
-
+                    if t in ['struct.LaneBoundaryType', 'struct.RoadSegment', 'struct.RoutingResponse']:
+                        if 1 in mem[var] and 2 in mem[var]:
+                            begin = var + "_1"
+                            size = var + "_2"
+                            cfg.valid_range.append((begin, ("+", size)))
+                            constrains.append(([(1, begin)], 'gt'))
+                            constrains.append(([(1, size)], 'ge'))
+                    if t == 'struct.Passage':
+                        if 0 in mem[var] and 1 in mem[var]:
+                            begin = var + "_0"
+                            size = var + "_1"
+                            cfg.valid_range.append((begin, ("+", size)))
+                            constrains.append(([(1, begin)], 'gt'))
+                            constrains.append(([(1, size)], 'ge'))
         return constrains
 
     def obj_assign(self, cfg, mem, edge, t, dst, src):
@@ -155,10 +171,15 @@ class Module:
             constrains = self.build_child_objs(cfg, mem, t, sym)
             cfg.edges[first_edge].append(('cons', constrains))
 
+        for (name, type), value in self.global_vars.items():
+            cfg.var_info[name] = {0: None, 'type': t, 'loc': None}
+            constrains = self.build_child_objs(cfg, mem, type, name)
+            cfg.edges[first_edge].append(('cons', constrains))
+            cfg.edges[first_edge].append(('cons', [([(1, name)], 'gt')]))
 
-        if func.name in ["empty_Vec2d", "size_Vec2d", "empty_LineSegment2d", "size_LineSegment2d",
-                         "empty_double", "size_double",
-                         "GetProjection", "GetSmoothPoint", "RightBoundaryType", "RightNeighborWaypoint"]:
+
+        if func.name.startswith("empty_") or func.name.startswith("size_") or func.name.startswith("clear_") or \
+            func.name in ["UpdateVehicleState", "UpdateRoutingResponse", "GetProjection", "GetSmoothPoint", "RightBoundaryType", "RightNeighborWaypoint"]:
             (t0, sym0) = func.args[0]
             cfg.edges[first_edge].append(('cons', [([(1, sym0)], 'gt')]))
             cfg.valid_range.append((sym0,))
@@ -224,6 +245,13 @@ class Module:
                         cfg.edges[internal].append(('assign', dst, [(1, x)]))
                         cfg.check.setdefault(internal[1], [])
                         cfg.check[internal[1]].append(('buffer_overflow', (tp, p), dbg_loc))
+                    elif inst[0] == 'call':
+                        ftype, fname = inst[1]
+                        if fname[1].startswith("@emplace_back_"):
+                            vec_t, vec_p = inst[3]
+                            vec = mem[vec_p][0]
+                            end = mem[vec][1]
+                            cfg.edges[internal].append(('assign', end, [(1, end), (1, 1)]))
                 elif len(inst) == 3:
                     sym, expr, dbg_loc = inst
                     if 'cons' in cfg.var_info[sym]:
@@ -255,10 +283,25 @@ class Module:
                     elif expr[0] == 'sub':
                         (tx, x), (ty, y) = expr[2], expr[3]
                         cfg.edges[internal].append(('assign', sym, [(1, x), (-1, y)]))
+                    elif expr[0] == 'mul':
+                        (tx, x), (ty, y) = expr[2], expr[3]
+                        if not isinstance(y, str):
+                            cfg.edges[internal].append(('assign', sym, [(y, x)]))
+                        if not isinstance(x, str):
+                            cfg.edges[internal].append(('assign', sym, [(x, y)]))
+                    elif expr[0] == 'div':
+                        (tx, x), (ty, y) = expr[2], expr[3]
+                        if not isinstance(y, str):
+                            cfg.edges[internal].append(('assign', sym, [(1.0/y, x)]))
                     elif expr[0] == 'shl':
-                        pass
+                        (tx, x), (tn, n) = expr[2], expr[3]
+                        if isinstance(n, int):
+                            cfg.var_info[sym][0] = ('shl', x, n)
                     elif expr[0] == 'shr':
-                        pass
+                        (tx, x), (tn, n) = expr[2], expr[3]
+                        if isinstance(cfg.var_info[x][0], tuple):
+                            if cfg.var_info[x][0][0] == 'shl' and n == cfg.var_info[x][0][2]:
+                                cfg.edges[internal].append(('assign', sym, [(1, cfg.var_info[x][0][1])]))
                     elif expr[0] == 'select':
                         (tc, cond), (tx, x), (ty, y) = expr[2], expr[3], expr[4]
                         new_n = blk.name + "_" + str(cur_inode)
@@ -321,6 +364,8 @@ class Module:
                             self.obj_assign(cfg, mem, internal, t, mem[sym][0], base)
                     elif expr[0] == 'load':
                         (tp, p) = expr[2]
+                        if isinstance(p, tuple):
+                            p = p[1]
                         cfg.check.setdefault(internal[1], [])
                         cfg.check[internal[1]].append(('buffer_overflow', (tp, p), dbg_loc))
                         self.obj_assign(cfg, mem, internal, expr[1], sym, mem[p][0])
@@ -338,7 +383,7 @@ class Module:
                             begin = mem[vec][0]
                             end = mem[vec][1]
                             cfg.var_info[sym][0] = ('cons', [([(1, end), (-1, begin)], 'eq')])
-                        elif fname[1].startswith("@size"):
+                        elif fname[1].startswith("@size_"):
                             vec_t, vec_p = expr[3]
                             cfg.check.setdefault(internal[1], [])
                             cfg.check[internal[1]].append(('buffer_overflow', (vec_t, vec_p), dbg_loc))
@@ -346,6 +391,16 @@ class Module:
                             begin = mem[vec][0]
                             end = mem[vec][1]
                             cfg.edges[internal].append(('assign', sym, [(1, end), (-1, begin)]))
+                        elif fname[1].startswith("@back_"):
+                            vec_t, vec_p = expr[3]
+                            cfg.check.setdefault(internal[1], [])
+                            cfg.check[internal[1]].append(('buffer_overflow', (vec_t, vec_p), dbg_loc))
+                            vec = mem[vec_p][0]
+                            end = mem[vec][1]
+                            cfg.edges[internal].append(('assign', sym, [(1, end), (1, -1)]))
+                        elif fname[1].startswith("@new_"):
+                            cfg.valid_range.append((sym,))
+                            cfg.edges[internal].append(('cons', [([(1, sym)], 'gt')]))
                         elif fname[1] == "@malloc":
                             t, n = expr[1], expr[3][1]
                             cfg.valid_range.append((sym, ("+", n)))
@@ -367,8 +422,6 @@ class Module:
                             cfg.check.setdefault(internal[1], [])
                             cfg.check[internal[1]].append(('buffer_overflow', (t3, p3), dbg_loc))
                             cfg.check[internal[1]].append(('buffer_overflow', (t4, p4), dbg_loc))
-
-
 
         for blk, edges in func.edges.items():
             for edge in edges:

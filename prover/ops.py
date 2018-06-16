@@ -13,6 +13,9 @@ def bitcast(t, x):
 def ptr_to_int(t, x):
     return ('identity', t, x)
 
+def sitofp(t, x):
+    return ('identity', t, x)
+
 def alloca(t, x):
     return ('alloca', t, x)
 
@@ -54,18 +57,24 @@ def fmul(t, x, y):
 
 def shl(t, x, n):
     return ('identity', t, x)
-    #return ('shl', t, x, n)
+    if isinstance(n[1], int) and n[1] > 0 and n[1] < 16:
+        return ('mul', t, x, (n[0], 1 << n[1]))
+    return ('shl', t, x, n)
 
 def ashr(t, x, n):
     return ('identity', t, x)
-    #return ('shr', t, x, n)
+    if isinstance(n[1], int) and n[1] > 0 and n[1] < 16:
+        return ('div', t, x, (n[0], 1 << n[1]))
+    return ('shr', t, x, n)
 
 def sdiv(t, x, y):
-    return ('identity', t, x)
+    return ('div', t, x, x)
 
 def lshr(t, x, n):
     return ('identity', t, x)
-    #return ('shr', t, x, n)
+    if isinstance(n[1], int) and n[1] > 0 and n[1] < 16:
+        return ('div', t, x, (n[0], 1 << n[1]))
+    return ('shr', t, x, n)
 
 def phi(t, dic):
     return ('phi', t, dic)
